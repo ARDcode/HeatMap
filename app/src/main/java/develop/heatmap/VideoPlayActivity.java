@@ -182,13 +182,13 @@ public class VideoPlayActivity extends AppCompatActivity {
         RequestBody requestBodyByte = RequestBody
                 .create(MediaType.parse("application/octet-stream"), buf);
 
-        Call<ResponseBody> call = service.videoTask("b7b70297455a468e9acba86b54a72fbf", requestBodyByte);
+        Call<ResponseBody> call = service.videoTask("6fbfd6b0-bf19-4254-b4a4-078d92e7f1bf", requestBodyByte);
         call.enqueue(new Callback<ResponseBody>() {
             @Override
             public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
                 Log.d("Response", "Upload Success");
                 operation_location = response.headers().get("Operation-Location");
-                System.out.println(operation_location);
+                System.out.println(response.message());
                 progressDialog.dismiss();
                 db.addVideoEmotion(new VideoEmotion(videoname, operation_location, ""));
                 videoStart();
@@ -214,7 +214,7 @@ public class VideoPlayActivity extends AppCompatActivity {
         progressDialog.show();
         FileUploadService service =
                 ServiceGenerator.createService(FileUploadService.class);
-        Call<Emotion> call = service.getEmotion(operation_location, "b7b70297455a468e9acba86b54a72fbf");
+        Call<Emotion> call = service.getEmotion(operation_location, "64f96aed99cb4970bcb35f365d1d5746");
         call.enqueue(new Callback<Emotion>() {
             @Override
             public void onResponse(Call<Emotion> call, Response<Emotion> response) {

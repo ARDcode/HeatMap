@@ -9,6 +9,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Matrix;
+import android.graphics.PointF;
 import android.hardware.Camera;
 import android.hardware.camera2.CameraDevice;
 import android.hardware.display.DisplayManager;
@@ -32,7 +33,9 @@ import android.util.Log;
 import android.util.SparseIntArray;
 import android.view.MotionEvent;
 import android.view.Surface;
+import android.view.SurfaceView;
 import android.view.View;
+import android.view.ViewGroup;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -43,6 +46,11 @@ import android.widget.ImageView;
 import android.widget.Toast;
 import android.widget.ToggleButton;
 
+import com.affectiva.android.affdex.sdk.Frame;
+import com.affectiva.android.affdex.sdk.detector.CameraDetector;
+import com.affectiva.android.affdex.sdk.detector.Detector;
+import com.affectiva.android.affdex.sdk.detector.Face;
+import com.google.gson.Gson;
 import com.sothree.slidinguppanel.SlidingUpPanelLayout;
 
 import java.io.File;
@@ -54,10 +62,21 @@ import java.util.Date;
 import java.util.List;
 
 import develop.heatmap.model.Coordinates;
+import develop.heatmap.model.Emotion;
+import develop.heatmap.model.EmotionStat;
+import develop.heatmap.model.EmotionsTime;
 import develop.heatmap.model.Prototype_coordinates;
+import develop.heatmap.model.UserStat;
 import develop.heatmap.service.CameraService;
+import okhttp3.MediaType;
+import okhttp3.MultipartBody;
+import okhttp3.RequestBody;
+import okhttp3.ResponseBody;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
-public class RecordActivity extends AppCompatActivity {
+public class RecordActivity extends AppCompatActivity implements Detector.ImageListener  {
 
     private static final String TAG = "MainActivity";
     private static final int REQUEST_CODE = 1000;
@@ -102,7 +121,14 @@ public class RecordActivity extends AppCompatActivity {
     private CameraDevice mCameraDevice;
     private boolean mRecording;
     private boolean mHandlingEvent;
+    private CameraDetector detector;
+    private SurfaceView cameraView;
+    CameraDetector.CameraType cameraType;
     private ArrayList<Coordinates> coordinatesArrayList;
+    private ArrayList<EmotionsTime> emotionsTime;
+    private ArrayList<UserStat> userStats;
+    private long startTime;
+    private long stopTime;
     private CameraDevice.StateCallback mStateCallback = new CameraDevice.StateCallback() {
 
         @Override
@@ -123,11 +149,93 @@ public class RecordActivity extends AppCompatActivity {
     };
     private ProgressDialog progressDialog;
     private SlidingUpPanelLayout mLayout;
+    private String path;
+
+    @Override
+    public void onImageResults(List<Face> faces, Frame image, float timestamp) {
+
+        if (faces == null)
+            return; //frame was not processed
+
+        if (faces.size() == 0)
+            return; //no face found
+
+        //For each face found
+        for (int i = 0 ; i < faces.size() ; i++) {
+            Face face = faces.get(i);
+
+            int faceId = face.getId();
+//
+//            //Appearance
+            Face.GENDER genderValue = face.appearance.getGender();
+            Face.GLASSES glassesValue = face.appearance.getGlasses();
+            Face.AGE ageValue = face.appearance.getAge();
+            Face.ETHNICITY ethnicityValue = face.appearance.getEthnicity();
+            Log.d("genderValue", String.valueOf(genderValue));
+            Log.d("ageValue", String.valueOf(ageValue));
+            Log.d("ethnicityValue", String.valueOf(ethnicityValue));
+//
+//
+//            //Some Emoji
+//            float smiley = face.emojis.getSmiley();
+//            float laughing = face.emojis.getLaughing();
+//            float wink = face.emojis.getWink();
+//
+//
+            //Some Emotions
+//            float joy = face.emotions.getJoy();
+//            float anger = face.emotions.getAnger();
+//            float disgust = face.emotions.getDisgust();
+            String anger = String.valueOf(face.emotions.getAnger());
+            String contempt = String.valueOf(face.emotions.getContempt());
+            String disgust = String.valueOf(face.emotions.getDisgust());
+            String joy = String.valueOf(face.emotions.getJoy());
+            String sadness = String.valueOf(face.emotions.getSadness());
+            String surprise = String.valueOf(face.emotions.getSurprise());
+            EmotionStat emotionStat = new EmotionStat(anger, contempt, disgust, joy, sadness, surprise);
+            userStats.add(new UserStat(String.valueOf(genderValue), String.valueOf(ageValue), String.valueOf(ethnicityValue)));
+            long currentTime = System.currentTimeMillis();
+            long def = currentTime - startTime;
+
+            emotionsTime.add(new EmotionsTime(String.valueOf(def), emotionStat));
+//            //Some Expressions
+//            float smile = face.expressions.getSmile();
+//            float brow_furrow = face.expressions.getBrowFurrow();
+//            float brow_raise = face.expressions.getBrowRaise();
+//
+//            //Measurements
+//            float interocular_distance = face.measurements.getInterocularDistance();
+//            float yaw = face.measurements.orientation.getYaw();
+//            float roll = face.measurements.orientation.getRoll();
+//            float pitch = face.measurements.orientation.getPitch();
+//
+//            //Face feature points coordinates
+//            PointF[] points = face.getFacePoints();
+//            Log.d("Joy", String.valueOf(joy));
+//            Log.d("Anger", String.valueOf(anger));
+//            Log.d("Disgust", String.valueOf(disgust));
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_test_slide);
+        cameraView = (SurfaceView) findViewById(R.id.camera_preview);
+        detector = new CameraDetector(this, CameraDetector.CameraType.CAMERA_FRONT, cameraView, 1, Detector.FaceDetectorMode.LARGE_FACES);
+        cameraView.setAlpha(0);
+        ViewGroup.LayoutParams params = cameraView.getLayoutParams();
+        params.height = 1;
+        params.width = 1;
+        int rate = 10;
+        detector.setMaxProcessRate(rate);
+        cameraView.setLayoutParams(params);
+        detector.setImageListener(this);
+        detector.setDetectAllExpressions(true);
+        detector.setDetectAllEmotions(true);
+        detector.setDetectAllEmojis(true);
+        detector.setDetectAllAppearances(true);
+        detector.setMaxProcessRate(2);
         final DBHelperPrototypes db = new DBHelperPrototypes(this);
         mWebView = (WebView) findViewById(R.id.ss);
         mLayout = (SlidingUpPanelLayout) findViewById(R.id.sliding_layout);
@@ -181,28 +289,21 @@ public class RecordActivity extends AppCompatActivity {
         mWebView.setOnTouchListener(new View.OnTouchListener() {
             public boolean onTouch(View arg0, MotionEvent event) {
                 int x = (int) event.getX();
-                int y = (int) event.getY();
+                int y = mWebView.getScrollY() + (int) event.getY();
 
                 switch (event.getAction()) {
                     case MotionEvent.ACTION_DOWN:
-                        Log.d("Touch", "ttttttttttach");
-
                         db.addPrototype(new Prototype_coordinates(mWebView.getUrl(), prototype_user_id, "0,0;"));
                         coordinatesArrayList.add(new Coordinates(mWebView.getUrl(), x + "," + y + ";", prototype_user_id));
-
-
                         try {
                             String file_path = Environment.getExternalStorageDirectory().getAbsolutePath() +
                                     "/HeatMap/" + prototype_name + "/" + prototype_user_name + "/";
                             File dir = new File(file_path);
                             if (!dir.exists())
                                 dir.mkdirs();
-                            System.out.println(mWebView.getOriginalUrl());
-                            System.out.println("Name:" + db.getId(mWebView.getUrl(), prototype_user_id));
                             File file = new File(dir, db.getId(mWebView.getUrl(), prototype_user_id) + "_screen.jpeg");
                             if (!file.exists()) {
                                 file.createNewFile();
-
                                 FileOutputStream fOut = new FileOutputStream(file);
                                 View v1 = mWebView;
                                 v1.setDrawingCacheEnabled(true);
@@ -281,8 +382,14 @@ public class RecordActivity extends AppCompatActivity {
                 } else {
                     onToggleScreenShare(v);
                     if (mRecording) {
+                        detector.stop();
+                        stopTime = System.currentTimeMillis();
                         stopRecording();
                     } else {
+                        detector.start();
+                        emotionsTime = new ArrayList<>();
+                        userStats = new ArrayList<>();
+                        startTime = System.currentTimeMillis();
                         startRecording();
                     }
                 }
@@ -333,6 +440,54 @@ public class RecordActivity extends AppCompatActivity {
                                 overlay(bitmap, heatMapOverlay.generateMap()).compress(Bitmap.CompressFormat.JPEG, 30, fOut); // bmp is your Bitmap instance
                             }
                             Toast.makeText(getApplicationContext(), "Ready", Toast.LENGTH_SHORT).show();
+                            FileUploadService service =
+                                    UploadServiceGenerator.createService(FileUploadService.class);
+
+                            // https://github.com/iPaulPro/aFileChooser/blob/master/aFileChooser/src/com/ipaulpro/afilechooser/utils/FileUtils.java
+                            // use the FileUtils to get the actual file by ur
+
+                            // create RequestBody instance from file
+                            RequestBody requestFile =
+                                    RequestBody.create(
+                                            MediaType.parse("application/octet-stream"),
+                                            file
+                                    );
+
+                            // MultipartBody.Part is used to send also the actual file name
+                            MultipartBody.Part body =
+                                    MultipartBody.Part.createFormData("imagefile", file.getName(), requestFile);
+
+                            // add another part within the multipart request
+                            RequestBody name =
+                                    RequestBody.create(
+                                            okhttp3.MultipartBody.FORM, file.getName());
+                            RequestBody id =
+                                    RequestBody.create(
+                                            okhttp3.MultipartBody.FORM, String.valueOf(cn.getId()));
+                            RequestBody user =
+                                    RequestBody.create(
+                                            okhttp3.MultipartBody.FORM, cn.getUser_id());
+                            RequestBody url =
+                                    RequestBody.create(
+                                            okhttp3.MultipartBody.FORM, cn.getUrl());
+                            RequestBody data =
+                                    RequestBody.create(
+                                            okhttp3.MultipartBody.FORM, cn.getCoodinates());
+
+                            // finally, execute the request
+                            Call<ResponseBody> call = service.uploadImage(name, url, data, body);
+                            call.enqueue(new Callback<ResponseBody>() {
+                                @Override
+                                public void onResponse(Call<ResponseBody> call,
+                                                       Response<ResponseBody> response) {
+                                    Log.v("Upload", "success");
+                                }
+
+                                @Override
+                                public void onFailure(Call<ResponseBody> call, Throwable t) {
+                                    Log.e("Upload error:", t.getMessage());
+                                }
+                            });
                         } catch (Exception e) {
                             e.printStackTrace();
                         } finally {
@@ -359,69 +514,128 @@ public class RecordActivity extends AppCompatActivity {
     }
 
     private void startRecording() {
+        setRecording(true);
         if (!mHandlingEvent) {
             mHandlingEvent = true;
+
             ResultReceiver receiver = new ResultReceiver(new Handler()) {
                 @Override
                 protected void onReceiveResult(int resultCode, Bundle resultData) {
-                    setRecording(true);
-                    handleStartRecordingResult(resultCode, resultData);
+
+//                    handleStartRecordingResult(resultCode, resultData);
                     mHandlingEvent = false;
                 }
             };
-            String path = Environment.getExternalStorageDirectory().getAbsolutePath() +
-                    "/HeatMap/" + prototype_name + "/" + prototype_user_name + "/" + currentDateandTime;
-            CameraService.startToStartRecording(this,
-                    Camera.CameraInfo.CAMERA_FACING_FRONT, receiver, path);
+//            String path = Environment.getExternalStorageDirectory().getAbsolutePath() +
+//                    "/HeatMap/" + prototype_name + "/" + prototype_user_name + "/" + currentDateandTime;
+
+//            CameraService.startToStartRecording(this,
+//                    Camera.CameraInfo.CAMERA_FACING_FRONT, receiver, path);
         }
     }
 
     private void stopRecording() {
+        setRecording(false);
         if (!mHandlingEvent) {
             mHandlingEvent = true;
+
             ResultReceiver receiver = new ResultReceiver(new Handler()) {
                 @Override
                 protected void onReceiveResult(int resultCode, Bundle resultData) {
                     setRecording(false);
-                    handleStopRecordingResult(resultCode, resultData);
+//                   handleStopRecordingResult(resultCode, resultData);
                     mHandlingEvent = false;
                 }
             };
-            CameraService.startToStopRecording(this, receiver);
+//            CameraService.startToStopRecording(this, receiver);
+
+
         }
     }
 
     private void setRecording(boolean recording) {
-        if (recording) {
-            mRecording = true;
-        } else {
-            mRecording = false;
-        }
+        mRecording = recording;
     }
 
-    private void handleStartRecordingResult(int resultCode, Bundle resultData) {
-        if (resultCode == CameraService.RECORD_RESULT_OK) {
-            Toast.makeText(this, "Start recording...", Toast.LENGTH_SHORT).show();
-        } else {
-            // start recording failed.
-            Toast.makeText(this, "Start recording failed...", Toast.LENGTH_SHORT).show();
-            setRecording(false);
-        }
-    }
+//    private void handleStartRecordingResult(int resultCode, Bundle resultData) {
+//        if (resultCode == CameraService.RECORD_RESULT_OK) {
+//            Toast.makeText(this, "Start recording...", Toast.LENGTH_SHORT).show();
+//        } else {
+//            // start recording failed.
+//            Toast.makeText(this, "Start recording failed...", Toast.LENGTH_SHORT).show();
+//            setRecording(false);
+//        }
+//    }
+//
+//    private void handleStopRecordingResult(int resultCode, Bundle resultData) {
+//        if (resultCode == CameraService.RECORD_RESULT_OK) {
+//            String videoPath = resultData.getString(CameraService.VIDEO_PATH);
+//            Toast.makeText(this, "Record succeed, file saved in " + videoPath,
+//                    Toast.LENGTH_LONG).show();
+//
+//        } else if (resultCode == CameraService.RECORD_RESULT_UNSTOPPABLE) {
+//            Toast.makeText(this, "Stop recording failed...", Toast.LENGTH_SHORT).show();
+//        } else {
+//            Toast.makeText(this, "Recording failed...", Toast.LENGTH_SHORT).show();
+//            setRecording(true);
+//        }
+//    }
 
-    private void handleStopRecordingResult(int resultCode, Bundle resultData) {
-        if (resultCode == CameraService.RECORD_RESULT_OK) {
-            String videoPath = resultData.getString(CameraService.VIDEO_PATH);
-            Toast.makeText(this, "Record succeed, file saved in " + videoPath,
-                    Toast.LENGTH_LONG).show();
-        } else if (resultCode == CameraService.RECORD_RESULT_UNSTOPPABLE) {
-            Toast.makeText(this, "Stop recording failed...", Toast.LENGTH_SHORT).show();
-        } else {
-            Toast.makeText(this, "Recording failed...", Toast.LENGTH_SHORT).show();
-            setRecording(true);
-        }
-    }
+    private void sendVideoToServer(String videopath){
+        FileUploadService service =
+                UploadServiceGenerator.createService(FileUploadService.class);
+        System.out.println(videopath);
+        // https://github.com/iPaulPro/aFileChooser/blob/master/aFileChooser/src/com/ipaulpro/afilechooser/utils/FileUtils.java
+        // use the FileUtils to get the actual file by ur
+        File file = new File(videopath);
+        // create RequestBody instance from file
+        RequestBody requestFile =
+                RequestBody.create(
+                        MediaType.parse("application/octet-stream"),
+                        file
+                );
+        RequestBody requestJson =
+                RequestBody.create(
+                        MediaType.parse("application/octet-stream"),
+                        file
+                );
+        Gson gson = new Gson();
+        String json = gson.toJson(emotionsTime);
+        String jsonUser = gson.toJson(userStats);
+        Log.d(TAG, "sendVideoToServer: "+ file.getName());
+        Log.d(TAG, "sendVideoToServer: "+ json);
+        // MultipartBody.Part is used to send also the actual file name
+        MultipartBody.Part body =
+                MultipartBody.Part.createFormData("videofile", file.getName(), requestFile);
 
+        // add another part within the multipart request
+        RequestBody name =
+                RequestBody.create(
+                        okhttp3.MultipartBody.FORM, file.getName());
+        RequestBody url =
+                RequestBody.create(
+                        okhttp3.MultipartBody.FORM, prototype_url);
+        RequestBody emotions =
+                RequestBody.create(
+                        okhttp3.MultipartBody.FORM, json);
+        RequestBody userStat =
+                RequestBody.create(
+                        okhttp3.MultipartBody.FORM, jsonUser);
+        // finally, execute the request
+        Call<ResponseBody> call = service.uploadVideo(name, url, emotions, userStat, body);
+        call.enqueue(new Callback<ResponseBody>() {
+            @Override
+            public void onResponse(Call<ResponseBody> call,
+                                   Response<ResponseBody> response) {
+                Log.v("UploadedVideo", "success");
+            }
+
+            @Override
+            public void onFailure(Call<ResponseBody> call, Throwable t) {
+                Log.e("Upload error:", t.getMessage());
+            }
+        });
+    }
     private int findFrontFacingCamera() {
         int cameraId = -1;
         // Search for the front facing camera
@@ -499,6 +713,7 @@ public class RecordActivity extends AppCompatActivity {
             mMediaRecorder.reset();
             Log.v(TAG, "Stopping Recording");
             stopScreenSharing();
+            sendVideoToServer(path);
         }
     }
 
@@ -529,9 +744,10 @@ public class RecordActivity extends AppCompatActivity {
 //            mMediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
             mMediaRecorder.setVideoSource(MediaRecorder.VideoSource.SURFACE);
             mMediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP);
-
-            mMediaRecorder.setOutputFile(Environment.getExternalStorageDirectory().getAbsolutePath() +
-                    "/HeatMap/" + prototype_name + "/" + prototype_user_name + "/" + currentDateandTime + ".mp4");
+            path = Environment.getExternalStorageDirectory().getAbsolutePath() +
+                    "/HeatMap/" + prototype_name + "/" + prototype_user_name + "/" + currentDateandTime + ".mp4";
+            mMediaRecorder.setOutputFile(path);
+            System.out.println(path);
             mMediaRecorder.setVideoSize(DISPLAY_WIDTH, DISPLAY_HEIGHT);
             mMediaRecorder.setVideoEncoder(MediaRecorder.VideoEncoder.H264);
 //            mMediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB);
@@ -604,7 +820,6 @@ public class RecordActivity extends AppCompatActivity {
             }
         }
     }
-
     private class MediaProjectionCallback extends MediaProjection.Callback {
         @Override
         public void onStop() {
@@ -612,6 +827,7 @@ public class RecordActivity extends AppCompatActivity {
                 mToggleButton.setChecked(false);
                 mMediaRecorder.stop();
                 mMediaRecorder.reset();
+                setRecording(false);
                 Log.v(TAG, "Recording Stopped");
             }
             mMediaProjection = null;

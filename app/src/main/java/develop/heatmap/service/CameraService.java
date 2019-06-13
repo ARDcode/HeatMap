@@ -204,7 +204,12 @@ public class CameraService extends Service {
                     } catch (IOException e) {
                         Log.d(TAG, "IOException when preparing MediaRecorder: " + e.getMessage());
                     }
-                    mMediaRecorder.start();
+                    try{
+                        mMediaRecorder.start();
+                    }
+                    catch (Exception e){
+
+                    }
 
                     resultReceiver.send(RECORD_RESULT_OK, null);
                     Log.d(TAG, "Recording is started");
@@ -220,7 +225,7 @@ public class CameraService extends Service {
             });
 
 
-            wm.addView(sv, params);
+            try{wm.addView(sv, params);}  catch (Exception e){}
 
         } else {
             Log.d(TAG, "Get Camera from service failed");

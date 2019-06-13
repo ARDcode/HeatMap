@@ -19,6 +19,23 @@ public interface FileUploadService {
 
     @POST("/emotion/v1.0/recognizeinvideo?outputStyle=aggregate")
     Call<ResponseBody> videoTask (@Header("Ocp-Apim-Subscription-Key") String key, @Body RequestBody videoEmotion);
+    @Multipart
+    @POST("/uploadImage")
+    Call<ResponseBody> uploadImage(
+            @Part("name") RequestBody name,
+            @Part("url") RequestBody url,
+            @Part("data") RequestBody data,
+            @Part MultipartBody.Part file
+    );
+    @Multipart
+    @POST("/uploadVideo")
+    Call<ResponseBody> uploadVideo(
+            @Part("name") RequestBody name,
+            @Part("url") RequestBody url,
+            @Part("emotions") RequestBody emotions,
+            @Part("userStat") RequestBody userStat,
+            @Part MultipartBody.Part file
+    );
     @GET
     Call<Emotion> getEmotion (@Url String url, @Header("Ocp-Apim-Subscription-Key") String key);
 }

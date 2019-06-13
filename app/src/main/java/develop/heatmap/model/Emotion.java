@@ -10,6 +10,12 @@ public class Emotion {
         return processingResult;
     }
 
+    public Emotion(String status, String processingResult, Double progress) {
+        this.status = status;
+        this.processingResult = processingResult;
+        this.progress = progress;
+    }
+
     public void setProcessingResult(String processingResult) {
         this.processingResult = processingResult;
     }

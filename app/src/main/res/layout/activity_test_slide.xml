@@ -79,6 +79,10 @@
                     style="@style/Widget.AppCompat.Button.Borderless.Colored"/>
 
         </RelativeLayout>
-
+        <SurfaceView
+            android:id="@+id/camera_preview"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_centerInParent="true" />
     </LinearLayout>
 </com.sothree.slidinguppanel.SlidingUpPanelLayout>
